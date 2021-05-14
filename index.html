@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tic Tac Toe</title>
+
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+        }
+
+        .header {
+            width: max-content;
+            margin: 32px auto;
+        }
+
+        .header > h1 {
+            display: inline-block;
+            padding: 0 16px;
+        }
+
+        #p1-name {
+            color: blue;
+        }
+
+        #p2-name {
+            color: red;
+        }
+
+        #settings {
+            width: max-content;
+            margin: 32px auto;
+            border: 1px solid gray;
+            padding: 16px;
+        }
+
+        #logs > div {
+            padding: 6px;
+            color: #fff;
+            background: lightseagreen;
+            transition: all 0.5s;
+            opacity: 0;
+        }
+
+        #logs > .error {
+            background: rgba(255, 0, 0, 0.58);
+        }
+
+        table {
+            width: auto;
+            border-collapse: collapse;
+            border: 1px solid black;
+            margin: 0 auto;
+        }
+
+        table td {
+            border: 1px solid black;
+            text-align: center;
+        }
+
+        td.fp {
+            color: blue;
+        }
+
+        td.sp {
+            color: red;
+        }
+
+        #game {
+            display: flex;
+            width: 100%;
+        }
+
+        #logs {
+            min-width: 400px;
+        }
+
+        #field {
+            flex: 1;
+            position: relative;
+        }
+
+        .win-line {
+            background: #333;
+            height: 2px;
+            position: absolute;
+            width: 100%;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1 id="p1-name">Player 1</h1>
+
+        <h1>VS</h1>
+
+        <h1 id="p2-name">Player 2</h1>
+    </div>
+
+    <div id="settings">
+        <label for="fieldSize">Укажите размер поля</label>
+
+        <select id="fieldSize">
+            <option selected value="3">3x3</option>
+            <option value="5">5x5</option>
+            <option value="9">9x9</option>
+            <option value="15">15x15</option>
+        </select>
+
+        <br />
+        <br />
+        <button onclick="startGame()">Start game!</button>
+    </div>
+
+    <div id="game">
+        <div id="field"></div>
+
+        <div id="logs"></div>
+    </div>
+
+    <script>
+        let player1Name = '';
+        let player2Name = '';
+        let player1Symbol = '';
+        let player2Symbol = '';
+        let field = [];
+        let fieldSize = 0;
+        const delay = 1000;
+        let pollerId = 0;
+        const logsView = document.getElementById('logs');
+        const fieldView = document.getElementById('field');
+
+        async function getPlayerNames() {
+            let resp = await fetch('/player/1');
+            player1Name = await resp.text();
+            document.getElementById('p1-name').innerText = player1Name;
+
+            resp = await fetch('/player/2');
+            player2Name = await resp.text();
+            document.getElementById('p2-name').innerText = player2Name;
+        }
+
+        async function getPlayerSymbols() {
+            let resp = await fetch('/player/1/symbol');
+            player1Symbol = await resp.text();
+
+            resp = await fetch('/player/2/symbol');
+            player2Symbol = await resp.text();
+        }
+
+        getPlayerNames();
+        getPlayerSymbols();
+
+        async function startGame() {
+            fieldSize = document.getElementById('fieldSize').value;
+
+            await fetch('/start', {
+                method: 'POST',
+                body: fieldSize,
+            });
+
+            document.getElementById('settings').remove();
+
+            for (let i = 0, s = parseInt(fieldSize); i < s * s; i++) {
+                field.push('-');
+            }
+
+            drawField();
+
+            pollerId = setInterval(async () => {
+                let player = "";
+
+                try {
+                    const resp = await fetch('/state');
+                    const body = await resp.text();
+
+                    const respParts = body.split('%');
+                    player = respParts[0];
+                    msg = respParts[1];
+
+                    if (!resp.ok) {
+                        throw new Error(msg);
+                    }
+                    
+                    field = respParts[2].split('*');
+                    addLog(player, msg);
+                } catch(e) {
+                    addLog(player, e.message, true);
+                }
+
+                drawField();
+            }, delay);
+        }
+
+        function addLog(playerName, msg, isError = false) {
+            const log = document.createElement('div');
+            if (isError) {
+                log.className = 'error';
+            }
+
+            log.innerHTML = `<b>${playerName}</b>: ${msg}`;
+            setTimeout(() => log.style.opacity = 1, 300);
+
+            logsView.prepend(log);
+        }
+
+        function drawField() {
+            fieldView.innerHTML = '';
+            const cellSize = logsView.clientWidth / fieldSize;
+            const fontSize = cellSize / 1.5;
+
+            const table = document.createElement('table');
+            for (let i = 0; i < fieldSize; i++) {
+                const tr = document.createElement('tr');
+
+                for (let j = 0; j < fieldSize; j++) {
+                    const td = document.createElement('td');
+                    td.style.width = `${cellSize}px`;
+                    td.style.height = `${cellSize}px`;
+                    td.style.fontSize = `${fontSize}px`;
+
+                    const v = field[i * fieldSize + j];
+
+                    td.className = v == player1Symbol ? 'fp' : 'sp'; 
+
+                    if (v !== '-') {
+                        td.innerText = v;
+                    }
+
+                    tr.appendChild(td);
+                }
+
+                table.appendChild(tr);
+            }
+
+            fieldView.appendChild(table);
+
+            checkWin();
+        }
+
+        function checkWin() {
+            const check = (arr, symbol) => arr.filter((a) => a === symbol).length;
+
+            // check horizontal lines.
+            for (let i = 0; i < fieldSize; i++) {
+                const p1 = check(field.slice(i*fieldSize, (i+1)*fieldSize), player1Symbol);
+                const p2 = check(field.slice(i*fieldSize, (i+1)*fieldSize), player2Symbol);
+
+                if (p1 == fieldSize || p2 == fieldSize) {
+                    clearInterval(pollerId);
+                    drawWinLine('horizontal', i + 1);
+                    alert(`${p1 == fieldSize ? player1Name : player2Name} win!`);
+                    return;
+                }
+            }
+
+            // check vertical lines.
+            for (let i = 0; i < fieldSize; i++) {
+                const vertical = [];
+                for (let j = 0; j < fieldSize; j++) {
+                    vertical.push(field[j * fieldSize + i]);
+                }
+
+                const p1 = check(vertical, player1Symbol);
+                const p2 = check(vertical, player2Symbol);
+
+                if (p1 == fieldSize || p2 == fieldSize) {
+                    clearInterval(pollerId);
+                    drawWinLine('vertical', i + 1);
+                    alert(`${p1 == fieldSize ? player1Name : player2Name} win!`);
+                    return;
+                }
+            }
+
+            // check diagonals.
+            let diagonal = [];
+            for (let j = 0; j < fieldSize; j++) {
+                diagonal.push(field[j * (fieldSize + 1)]);
+            }
+            let p1 = check(diagonal, player1Symbol);
+            let p2 = check(diagonal, player2Symbol);
+            if (p1 == fieldSize || p2 == fieldSize) {
+                clearInterval(pollerId);
+                drawWinLine('diagonal', 0);
+                alert(`${p1 == fieldSize ? player1Name : player2Name} win!`);
+                return;
+            }
+
+            diagonal = [];
+            for (let j = 0; j < fieldSize; j++) {
+                diagonal.push(field[j * fieldSize + (fieldSize - j - 1)]);
+            }
+
+            p1 = check(diagonal, player1Symbol);
+            p2 = check(diagonal, player2Symbol);
+
+            if (p1 == fieldSize || p2 == fieldSize) {
+                clearInterval(pollerId);
+                drawWinLine('diagonal', 1);
+                alert(`${p1 == fieldSize ? player1Name : player2Name} win!`);
+                return;
+            }
+
+            // check for draw.
+            const draw = check(field, '-');
+            if (!draw) {
+                clearInterval(pollerId);
+                alert('The game is drawn');
+            }
+        }
+
+        function drawWinLine(direction, index) {
+            const line = document.createElement('div');
+            line.className = 'win-line';
+            const tableField = fieldView.getElementsByTagName('table')[0];
+            const tableWidth = tableField.offsetWidth;
+            const cellSize = tableWidth / fieldSize;
+
+            switch (direction) {
+                case 'horizontal':
+                    line.style.top = `${cellSize * (index - 0.5)}px`;
+                    line.style.width = `${tableField.offsetWidth}px`;
+                    line.style.left = `${(fieldView.clientWidth - tableWidth) / 2}px`;
+                    break;
+                case 'vertical':
+                    line.style.top = '0px';
+                    line.style.height = `${fieldView.clientHeight}px`;
+                    line.style.width = '2px';
+                    line.style.left = `${(fieldView.clientWidth - tableWidth) / 2 + cellSize * (index - 0.5)}px`;
+                    break;
+                case 'diagonal':
+                    line.style.top = '50%';
+                    line.style.bottom = '0px';
+                    line.style.transform = `rotate(${index ? '-45deg' : '45deg'})`;
+                    break;
+            }
+
+            fieldView.appendChild(line);
+        }
+    </script>
+</body>
+</html>
