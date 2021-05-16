@@ -16,9 +16,12 @@ public class PlayerNoob extends Player {
                     return (fieldSize*fieldSize-1)/2 ;
 
 
-                }else if (field[i][j] =='-'){
+                }else if (field[(fieldSize-1)/2][(fieldSize-1)/2]==this.symbol&&field[fieldSize*0][fieldSize-1] =='-'){
+                    return  fieldSize -1;
 
 
+                } else if (field[(fieldSize-1)/2][(fieldSize-1)/2]==this.symbol&&field[fieldSize*0][fieldSize-1] ==this.symbol&&field[fieldSize-1][fieldSize*0] =='-' ){
+                    return fieldSize*2;
                 }
                 { return j*fieldSize +i;
 
